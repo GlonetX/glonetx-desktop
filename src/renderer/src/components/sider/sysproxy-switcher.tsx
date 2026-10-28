@@ -44,8 +44,14 @@ const SysproxySwitcher: React.FC<Props> = (props) => {
 
   const transform = tf ? { x: tf.x, y: tf.y, scaleX: 1, scaleY: 1 } : null
   const disabled = mixedPort == 0
+  const [pendingEnable, setPendingEnable] = React.useState<boolean | null>(null)
+  const pending = pendingEnable !== null
+  const displayEnable = pendingEnable ?? enable
   const onChange = async (enable: boolean): Promise<void> => {
+    if (pending) return
     if (mode == 'manual' && disabled) return
+    // 先把开关切到目标状态并锁定，避免等待系统调用时出现「点了没反应」
+    setPendingEnable(enable)
     try {
       await triggerSysProxy(enable, onlyActiveDevice)
       await patchAppConfig({ sysProxy: { enable } })
@@ -53,6 +59,8 @@ const SysproxySwitcher: React.FC<Props> = (props) => {
       window.electron.ipcRenderer.send('updateTrayMenu')
     } catch (e) {
       notify(e, { variant: 'danger' })
+    } finally {
+      setPendingEnable(null)
     }
   }
 
@@ -66,9 +74,9 @@ const SysproxySwitcher: React.FC<Props> = (props) => {
         expanded={expanded}
       >
         <BorderSwitch
-          isShowBorder={match && enable}
-          isSelected={!(mode != 'auto' && disabled) && enable}
-          isDisabled={mode == 'manual' && disabled}
+          isShowBorder={match && displayEnable}
+          isSelected={!(mode != 'auto' && disabled) && displayEnable}
+          isDisabled={pending || (mode == 'manual' && disabled)}
           onValueChange={onChange}
         />
       </SiderItem>
@@ -109,9 +117,9 @@ const SysproxySwitcher: React.FC<Props> = (props) => {
               />
             </Button>
             <BorderSwitch
-              isShowBorder={match && enable}
-              isSelected={!(mode != 'auto' && disabled) && enable}
-              isDisabled={mode == 'manual' && disabled}
+              isShowBorder={match && displayEnable}
+              isSelected={!(mode != 'auto' && disabled) && displayEnable}
+              isDisabled={pending || (mode == 'manual' && disabled)}
               onValueChange={onChange}
             />
           </div>

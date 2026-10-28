@@ -263,7 +263,7 @@ const Sysproxy: React.FC = () => {
             </Tabs.ListContainer>
           </Tabs>
         </SettingItem>
-        {platform !== 'linux' && values.settingMode === 'service' && (
+        {platform !== 'linux' && (
           <SettingItem
             compatKey="legacy"
             title="仅为活跃接口设置"
@@ -275,7 +275,10 @@ const Sysproxy: React.FC = () => {
                 <Tooltip.Content>
                   {
                     <>
-                      <div>开启后，系统代理仅会为当前活跃的网络接口设置，仅服务模式下生效</div>
+                      <div>
+                        开启后，系统代理仅为当前已启用的网络接口设置，跳过未连接/未启用的接口（如未插卡的
+                        iPhone USB、Tailscale、Surge），可显著加快开关速度
+                      </div>
                     </>
                   }
                 </Tooltip.Content>
@@ -286,7 +289,6 @@ const Sysproxy: React.FC = () => {
             <Switch
               size="sm"
               isSelected={onlyActiveDevice}
-              isDisabled={!values.settingMode || values.settingMode !== 'service'}
               onChange={(v) => {
                 patchAppConfig({ onlyActiveDevice: v })
               }}

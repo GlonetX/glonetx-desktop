@@ -28,6 +28,10 @@ function registryArgs(useRegistry: boolean): string[] {
   return process.platform === 'win32' && useRegistry ? ['--use-registry'] : []
 }
 
+function activeDeviceArgs(onlyActiveDevice: boolean): string[] {
+  return onlyActiveDevice ? ['--only-active-device'] : []
+}
+
 export function triggerSysProxy(
   enable: boolean,
   onlyActiveDevice: boolean,
@@ -38,9 +42,11 @@ export function triggerSysProxy(
     clearTimeout(triggerSysProxyTimer)
     triggerSysProxyTimer = null
   }
-  const task = triggerSysProxyTask.then(() =>
-    triggerSysProxyImpl(enable, onlyActiveDevice, useRegistry, request)
-  )
+  const task = triggerSysProxyTask.then(() => {
+    // 已被更新请求取代的操作直接跳过，避免连续点击时排队累加耗时
+    if (request !== triggerSysProxyRequest) return
+    return triggerSysProxyImpl(enable, onlyActiveDevice, useRegistry, request)
+  })
   triggerSysProxyTask = task.catch(() => {})
   return task
 }
@@ -143,6 +149,7 @@ async function setSysProxy(onlyActiveDevice: boolean, useRegistry = false): Prom
           'pac',
           '--url',
           `http://${host || '127.0.0.1'}:${pacPort}/pac`,
+          ...activeDeviceArgs(onlyActiveDevice),
           ...registryArgs(useRegistry)
         ])
       }
@@ -174,6 +181,7 @@ async function setSysProxy(onlyActiveDevice: boolean, useRegistry = false): Prom
             `${host || '127.0.0.1'}:${port}`,
             '--bypass',
             process.platform === 'win32' ? bypass.join(';') : bypass.join(','),
+            ...activeDeviceArgs(onlyActiveDevice),
             ...registryArgs(useRegistry)
           ])
         }
@@ -192,7 +200,12 @@ async function disableSysProxy(onlyActiveDevice: boolean, useRegistry = false): 
   const { settingMode = 'exec' } = sysProxy
   const execFilePromise = promisify(execFile)
   const disableWithExec = (): Promise<unknown> =>
-    execFilePromise(servicePath(), ['sysproxy', 'disable', ...registryArgs(useRegistry)])
+    execFilePromise(servicePath(), [
+      'sysproxy',
+      'disable',
+      ...activeDeviceArgs(onlyActiveDevice),
+      ...registryArgs(useRegistry)
+    ])
 
   if (settingMode === 'service') {
     try {
