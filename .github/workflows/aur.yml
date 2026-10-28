@@ -4,7 +4,7 @@ on:
   workflow_call:
     secrets:
       AUR_SSH_PRIVATE_KEY:
-        required: true
+        required: false
   workflow_dispatch:
 
 permissions:
@@ -26,6 +26,20 @@ jobs:
           - sparkle-git
           - sparkle-electron-git
     steps:
+      - name: Check AUR Credentials
+        id: creds
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${AUR_SSH_PRIVATE_KEY}" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=AUR skipped::未配置 AUR_SSH_PRIVATE_KEY，跳过 AUR 发布"
+          fi
+
       - name: Install Dependencies
         run: pacman -Syu --noconfirm git github-cli jq
 
@@ -92,7 +106,7 @@ jobs:
           runuser -u builder -- bash -c "cd 'aur/${PACKAGE}' && makepkg --printsrcinfo > .SRCINFO"
 
       - name: Publish AUR Package
-        if: steps.changes.outputs.changed == 'true'
+        if: steps.changes.outputs.changed == 'true' && steps.creds.outputs.available == 'true'
         uses: KSXGitHub/github-actions-deploy-aur@084b0d9b15415bf9cdb65d44dad1efe37a354050
         with:
           pkgname: ${{ matrix.package }}
