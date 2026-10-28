@@ -3,6 +3,7 @@ import { mainWindow } from '..'
 import { getAppConfig } from '../config'
 import { quitWithoutCore } from '../core/manager'
 import { dataDir, logDir, mihomoCoreDir, mihomoWorkDir } from '../utils/dirs'
+import { forkBuildLabel } from '../../shared/app-meta'
 
 export async function createApplicationMenu(): Promise<void> {
   if (process.platform !== 'darwin') {
@@ -188,7 +189,7 @@ export async function createApplicationMenu(): Promise<void> {
               type: 'info',
               title: '关于 Sparkle',
               message: 'Sparkle',
-              detail: `版本：${app.getVersion()}\n一个基于 Electron 的代理工具`,
+              detail: `版本：${app.getVersion()}（${forkBuildLabel}）\n一个基于 Electron 的代理工具`,
               buttons: ['确定']
             })
           }

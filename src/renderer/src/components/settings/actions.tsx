@@ -13,6 +13,7 @@ import {
 import { useState, useEffect } from 'react'
 import UpdaterDrawer from '../updater/updater-drawer'
 import { version } from '@renderer/utils/init'
+import { forkName } from '../../../../shared/app-meta'
 import { IoIosHelpCircle } from 'react-icons/io'
 import { startTour } from '@renderer/utils/driver'
 import { useNavigate } from 'react-router-dom'
@@ -239,7 +240,12 @@ const Actions: React.FC = () => {
           </Button>
         </SettingItem>
         <SettingItem compatKey="legacy" title="应用版本">
-          <div>v{version}</div>
+          <div>
+            v{version}
+            <span className="ml-2 rounded bg-default px-1.5 py-0.5 text-xs text-muted">
+              {forkName}
+            </span>
+          </div>
         </SettingItem>
       </SettingCard>
     </>
