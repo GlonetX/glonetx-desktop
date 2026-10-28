@@ -1,6 +1,6 @@
 import yaml from 'yaml'
 import { readFileSync, writeFileSync } from 'fs'
-import { repoUrl } from '../src/shared/app-meta'
+import { repoUrl } from '../src/shared/app-meta.ts'
 
 const pkg = readFileSync('package.json', 'utf-8')
 let changelog = readFileSync('changelog.md', 'utf-8')
