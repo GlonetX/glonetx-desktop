@@ -3,7 +3,7 @@ import { mainWindow } from '..'
 import { getAppConfig } from '../config'
 import { quitWithoutCore } from '../core/manager'
 import { dataDir, logDir, mihomoCoreDir, mihomoWorkDir } from '../utils/dirs'
-import { forkBuildLabel } from '../../shared/app-meta'
+import { forkBuildLabel, repoUrl } from '../../shared/app-meta'
 
 export async function createApplicationMenu(): Promise<void> {
   if (process.platform !== 'darwin') {
@@ -172,7 +172,7 @@ export async function createApplicationMenu(): Promise<void> {
         {
           label: '了解更多',
           click: () => {
-            shell.openExternal('https://github.com/xishang0128/sparkle')
+            shell.openExternal(repoUrl)
           }
         },
         {

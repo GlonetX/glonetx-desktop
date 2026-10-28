@@ -19,12 +19,13 @@ import {
 } from '../service/fallback'
 import { appendAppLog } from '../utils/log'
 import { systemCoreOnlyBuild } from '../../shared/build-flags'
+import { repoSlug, repoUrl } from '../../shared/app-meta'
 
 let downloadCancelToken: CancelTokenSource | null = null
 const WINDOWS_INSTALLER_MIN_TEMP_SPACE_BYTES = 1024 * 1024 * 1024
 const UPDATE_MANIFEST_URLS: Record<AppUpdateChannel, string> = {
-  stable: 'https://github.com/xishang0128/sparkle/releases/latest/download/latest.yml',
-  rolling: 'https://github.com/xishang0128/sparkle/releases/download/rolling/latest.yml'
+  stable: `${repoUrl}/releases/latest/download/latest.yml`,
+  rolling: `${repoUrl}/releases/download/rolling/latest.yml`
 }
 
 function getGitHubAuthHeaders(token?: string): Record<string, string> {
@@ -118,7 +119,7 @@ export async function downloadAndInstallUpdate(version: string, tag?: string): P
   const { 'mixed-port': mixedPort = 7890 } = await getControledMihomoConfig()
   const { githubToken } = await getAppConfig()
   const releaseTag = resolveReleaseTag(version, tag)
-  const baseUrl = `https://github.com/xishang0128/sparkle/releases/download/${releaseTag}/`
+  const baseUrl = `${repoUrl}/releases/download/${releaseTag}/`
   const fileMap: Record<string, string> = {
     'win32-x64': `sparkle-windows-${version}-x64-setup.exe`,
     'win32-arm64': `sparkle-windows-${version}-arm64-setup.exe`,
@@ -134,7 +135,7 @@ export async function downloadAndInstallUpdate(version: string, tag?: string): P
   }
   downloadCancelToken = axios.CancelToken.source()
 
-  const apiUrl = `https://api.github.com/repos/xishang0128/sparkle/releases/tags/${releaseTag}`
+  const apiUrl = `https://api.github.com/repos/${repoSlug}/releases/tags/${releaseTag}`
   const apiRequestConfig: AxiosRequestConfig = {
     headers: {
       Accept: 'application/vnd.github.v3+json',

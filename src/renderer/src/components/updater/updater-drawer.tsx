@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { downloadAndInstallUpdate } from '@renderer/utils/ipc'
 import { platform } from '@renderer/utils/init'
 import { notify } from '@renderer/utils/notification'
+import { repoUrl } from '../../../../shared/app-meta'
 import { FiX, FiDownload } from 'react-icons/fi'
 
 interface Props {
@@ -82,7 +83,7 @@ const UpdaterDrawer: React.FC<Props> = (props) => {
 
   const isDownloading = updateStatus?.downloading || downloading
   const releaseTag = tag ?? (version.includes('-rolling-') ? 'rolling' : version)
-  const releaseUrl = `https://github.com/xishang0128/sparkle/releases/tag/${releaseTag}`
+  const releaseUrl = `${repoUrl}/releases/tag/${releaseTag}`
   const releaseLink = !isDownloading && (
     <Link
       className={

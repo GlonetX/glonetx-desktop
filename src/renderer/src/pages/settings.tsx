@@ -10,6 +10,7 @@ import Actions from '@renderer/components/settings/actions'
 import ShortcutConfig from '@renderer/components/settings/shortcut-config'
 import { FaTelegramPlane } from 'react-icons/fa'
 import SiderConfig from '@renderer/components/settings/sider-config'
+import { repoUrl } from '../../../shared/app-meta'
 import SubStoreConfig from '@renderer/components/settings/substore-config'
 import AppearanceConfig from '@renderer/components/settings/appearance-confis'
 import WebhookConfigPanel from '@renderer/components/settings/webhook-config'
@@ -36,7 +37,7 @@ const Settings: React.FC = () => {
             isIconOnly
             size="sm"
             onPress={() => {
-              window.open('https://github.com/xishang0128/sparkle')
+              window.open(repoUrl)
             }}
             variant="ghost"
             data-color="default"
