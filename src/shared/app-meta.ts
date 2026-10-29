@@ -9,6 +9,6 @@ export const forkName = 'GlonetX'
 export const forkBuildLabel = `${forkName} 构建`
 
 /** 发布源仓库（owner/repo），自动更新与下载链接都基于它 */
-export const repoSlug = 'GlonetX/sparkle'
+export const repoSlug = 'GlonetX/glonetx-desktop'
 
 export const repoUrl = `https://github.com/${repoSlug}`
