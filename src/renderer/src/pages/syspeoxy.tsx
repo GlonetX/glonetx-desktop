@@ -7,11 +7,18 @@ import EditableList from '@renderer/components/base/base-list-editor'
 import PacEditorModal from '@renderer/components/sysproxy/pac-editor-modal'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { platform } from '@renderer/utils/init'
-import { getAppConfig, openUWPTool, serviceStatus, triggerSysProxy } from '@renderer/utils/ipc'
+import {
+  forceRestoreNetwork,
+  getAppConfig,
+  openUWPTool,
+  serviceStatus,
+  triggerSysProxy
+} from '@renderer/utils/ipc'
 import React, { Key, useEffect, useState } from 'react'
 import ByPassEditorModal from '@renderer/components/sysproxy/bypass-editor-modal'
 import { IoIosHelpCircle } from 'react-icons/io'
 import { notify } from '@renderer/utils/notification'
+import ConfirmModal from '@renderer/components/base/base-confirm'
 
 const defaultPacScript = `
 function FindProxyForURL(url, host) {
@@ -98,6 +105,8 @@ const Sysproxy: React.FC = () => {
   }, [sysProxy])
   const [openEditor, setOpenEditor] = useState(false)
   const [openPacEditor, setOpenPacEditor] = useState(false)
+  const [openRestoreConfirm, setOpenRestoreConfirm] = useState(false)
+  const [restoring, setRestoring] = useState(false)
 
   const setValues = (v: typeof values): void => {
     originSetValues(v)
@@ -143,6 +152,29 @@ const Sysproxy: React.FC = () => {
     }
   }
 
+  const onForceRestore = async (): Promise<void> => {
+    setRestoring(true)
+    try {
+      const result = await forceRestoreNetwork()
+      mutateAppConfig()
+
+      if (result.errors.length > 0) {
+        notify(`部分项目未能恢复：${result.errors.join('；')}`, {
+          variant: 'warning',
+          timeout: 10000
+        })
+      } else {
+        notify(result.dnsRestored ? '已清除系统代理并还原 DNS' : '已清除系统代理设置', {
+          variant: 'success'
+        })
+      }
+    } catch (e) {
+      notify(e, { variant: 'danger' })
+    } finally {
+      setRestoring(false)
+    }
+  }
+
   return (
     <BasePage
       title="系统代理设置"
@@ -182,6 +214,33 @@ const Sysproxy: React.FC = () => {
               bypass: list
             })
           }}
+        />
+      )}
+      {openRestoreConfirm && (
+        <ConfirmModal
+          onChange={setOpenRestoreConfirm}
+          title="强制恢复网络配置？"
+          description={
+            <div className="space-y-2 text-sm">
+              <p>
+                将立即关闭 PAC 服务与系统代理守护，并对
+                <span className="font-medium">所有网络服务</span>
+                清除 HTTP / HTTPS / SOCKS 代理与自动代理（PAC）设置
+                {platform === 'darwin' && '，同时把 DNS 还原为使用本应用前的值'}。
+              </p>
+              <p className="text-warning">
+                此操作不做任何检查：即使当前显示代理已关闭也会执行，用于应用崩溃或强制退出后系统代理残留、
+                导致整机断网的情况。
+              </p>
+              <p className="text-muted">
+                若你原本使用其它代理软件（如公司代理、Surge、Clash
+                Verge），其代理设置也会被清除，需要在该软件中重新开启。
+              </p>
+            </div>
+          }
+          confirmText={restoring ? '正在恢复…' : '强制恢复'}
+          cancelText="取消"
+          onConfirm={onForceRestore}
         />
       )}
       <SettingCard className="sysproxy-settings">
@@ -414,6 +473,44 @@ const Sysproxy: React.FC = () => {
             />
           </>
         )}
+      </SettingCard>
+
+      <SettingCard className="sysproxy-restore">
+        <SettingItem
+          compatKey="legacy"
+          title="强制恢复网络配置"
+          actions={
+            <Tooltip delay={0}>
+              <Button isIconOnly size="sm" variant="ghost" data-color="default">
+                <IoIosHelpCircle className="text-lg" />
+              </Button>
+              <Tooltip.Content>
+                {
+                  <div className="max-w-64">
+                    应用异常退出、系统代理残留导致整机断网时使用。会立即清除所有网络服务上的代理设置，
+                    {platform === 'darwin' ? '并把 DNS 还原为使用前的值。' : '不做可用性检查。'}
+                  </div>
+                }
+              </Tooltip.Content>
+            </Tooltip>
+          }
+          divider
+        >
+          <Button
+            size="sm"
+            variant="danger"
+            isPending={restoring}
+            isDisabled={restoring}
+            onPress={() => setOpenRestoreConfirm(true)}
+          >
+            {restoring ? '正在恢复…' : '强制恢复'}
+          </Button>
+        </SettingItem>
+        <SettingItem compatKey="legacy" title="当前状态">
+          <div className="text-sm text-muted">
+            {sysProxy.enable ? '系统代理已开启' : '系统代理已关闭'}
+          </div>
+        </SettingItem>
       </SettingCard>
     </BasePage>
   )

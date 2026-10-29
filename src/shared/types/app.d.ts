@@ -4,6 +4,15 @@ interface AppVersion {
   changelog: string
 }
 
+interface ForceRestoreResult {
+  /** 已清除代理的网络服务数量 */
+  cleared: number
+  /** DNS 是否被还原 */
+  dnsRestored: boolean
+  /** 未能处理的项，逐条说明 */
+  errors: string[]
+}
+
 type AppUpdateChannel = 'stable' | 'rolling'
 type AppNotificationMode = 'system' | 'toast'
 type AppNotificationVariant = 'default' | 'accent' | 'success' | 'warning' | 'danger'
