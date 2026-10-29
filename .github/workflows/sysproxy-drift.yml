@@ -1,0 +1,76 @@
+name: Sysproxy Drift Test
+
+# 系统代理漂移检测里最难在本机验证的是 Windows 分支（注册表读写）。
+# 这个 workflow 在真实的 Windows runner 上跑一遍：先验判定逻辑，再真的写
+# HKCU 的 ProxyEnable / ProxyServer 再用代码读回来。
+#
+# 同时也在 ubuntu 上跑一遍纯逻辑，保证不依赖平台的判定没有回归。
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - 'src/main/sys/**'
+      - 'scripts/test-sysproxy-windows.ts'
+      - '.github/workflows/sysproxy-drift.yml'
+  pull_request:
+    paths:
+      - 'src/main/sys/**'
+      - 'scripts/test-sysproxy-windows.ts'
+      - '.github/workflows/sysproxy-drift.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sysproxy-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Drift detection on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
+
+      - name: Setup pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck sys module
+        run: pnpm exec tsc --noEmit -p tsconfig.node.json --composite false
+
+      - name: Run drift tests
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm exec tsx scripts/test-sysproxy-windows.ts 2>&1 | tee drift-test.log
+
+      # 注册表往返只在 Windows 上有意义，脚本内部会自己跳过。
+      # 这里额外断言一次，避免「静默跳过」被当成通过。
+      - name: Assert registry round-trip ran
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          if grep -q '跳过' drift-test.log; then
+            echo "::error::注册表往返在 Windows 上被跳过了"
+            exit 1
+          fi
+          grep -q '全部通过' drift-test.log

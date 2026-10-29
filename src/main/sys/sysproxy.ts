@@ -16,6 +16,7 @@ import {
 import type { ServiceSysproxyEvent } from '../service/api'
 import { appendAppLog } from '../utils/log'
 import { showNotification } from '../utils/notification'
+import { evaluateWindowsDrift, readWindowsSystemProxy } from './winproxy'
 
 let defaultBypass: string[]
 let triggerSysProxyTimer: NodeJS.Timeout | null = null
@@ -426,52 +427,10 @@ async function readDarwinServiceProxy(
 }
 
 async function detectWindowsDrift(expected: string | null, mode: string): Promise<SysProxyDrift> {
-  // Windows 的系统代理是 HKCU 下的一组值，不区分网络服务
-  const execFilePromise = promisify(execFile)
   try {
-    const { stdout } = await execFilePromise('reg', [
-      'query',
-      'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings',
-      '/v',
-      'ProxyEnable'
-    ])
-    const enabled = /ProxyEnable\s+REG_DWORD\s+0x1/i.test(stdout)
-    const issues: SysProxyDriftIssue[] = []
-    let server = ''
-
-    if (enabled) {
-      const { stdout: serverOut } = await execFilePromise('reg', [
-        'query',
-        'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings',
-        '/v',
-        'ProxyServer'
-      ])
-      server = serverOut.match(/ProxyServer\s+REG_SZ\s+(\S+)/)?.[1] ?? ''
-    }
-
-    if (enabled && !expected) {
-      issues.push({ service: 'Windows', kind: 'stale', detail: `系统代理仍指向 ${server}` })
-    } else if (!enabled && expected && mode === 'manual') {
-      issues.push({
-        service: 'Windows',
-        kind: 'missing',
-        detail: `系统代理未生效，期望 ${expected}`
-      })
-    } else if (enabled && expected && mode === 'manual' && server !== expected) {
-      issues.push({
-        service: 'Windows',
-        kind: 'mismatch',
-        detail: `系统代理指向 ${server}，期望 ${expected}`
-      })
-    }
-
-    return {
-      supported: true,
-      ok: issues.length === 0,
-      expected,
-      enabledCount: enabled ? 1 : 0,
-      issues
-    }
+    const actual = await readWindowsSystemProxy()
+    // evaluateWindowsDrift 的返回结构与 SysProxyDrift 同构，直接透传
+    return evaluateWindowsDrift(actual, expected, mode)
   } catch (error) {
     await appendAppLog(`[Sysproxy]: drift detect failed on windows, ${error}\n`)
     return { supported: false, ok: true, expected, enabledCount: 0, issues: [] }
