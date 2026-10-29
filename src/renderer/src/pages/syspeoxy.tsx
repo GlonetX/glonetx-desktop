@@ -157,6 +157,9 @@ const Sysproxy: React.FC = () => {
 
   const onForceRestore = async (): Promise<void> => {
     setRestoring(true)
+    // 先把界面切到「已关闭」：恢复本身要跑十几个系统调用，
+    // 不能让用户盯着一个还显示「已开启」的开关。
+    refreshDrift()
     try {
       const result = await forceRestoreNetwork()
       mutateAppConfig()

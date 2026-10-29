@@ -3,7 +3,7 @@ import { pacPort, startPacServer, stopPacServer } from '../resolve/server'
 import { promisify } from 'util'
 import { execFile, execFileSync } from 'child_process'
 import { servicePath } from '../utils/dirs'
-import { net } from 'electron'
+import { BrowserWindow, ipcMain, net } from 'electron'
 import {
   disableProxy,
   setPac,
@@ -533,12 +533,21 @@ export async function forceRestoreNetwork(): Promise<ForceRestoreResult> {
     }
   }
 
-  // 5. 让开关与真实状态一致，否则 UI 仍显示"已开启"
+  // 5. 收敛应用内部状态：开关必须变成「关闭」。
+  //
+  // 注意这里不是简单地把 enable 写成 false 就完事：哪怕是原本开着的，
+  // 走完强制恢复之后应用也必须认为代理是关的，否则界面会显示一个
+  // 指向已经不存在的代理的开关。同时要通知托盘和浮动窗口重新渲染，
+  // 否则那两个视图会一直停留在旧状态。
+  //
+  // guard 一并关掉：守护的意义是「有人改了代理就恢复回去」，而现在
+  // 我们主动把代理清了，留着守护会在下次触发时把系统代理又打开。
   try {
-    await patchAppConfig({ sysProxy: { enable: false } })
+    await patchAppConfig({ sysProxy: { enable: false, guard: false, guardNotify: false } })
   } catch (error) {
     errors.push(`保存配置失败：${error}`)
   }
+  broadcastSysProxyOff()
 
   await appendAppLog(
     `[Sysproxy]: force restore network finished, cleared=${cleared}, dnsRestored=${dnsRestored}` +
@@ -547,6 +556,33 @@ export async function forceRestoreNetwork(): Promise<ForceRestoreResult> {
   )
 
   return { cleared, dnsRestored, errors }
+}
+
+/**
+ * 把「系统代理已关闭」这件事广播给所有还在显示它的地方。
+ *
+ * `patchAppConfig` 只写文件并触发 webhook，不会通知渲染进程；
+ * 托盘菜单和浮动窗口又各自持有一份配置副本，只改 config 文件不会让它们
+ * 重新渲染。所以强制恢复之后必须显式通知这三处。
+ */
+function broadcastSysProxyOff(): void {
+  for (const [label, emit] of [
+    ['appConfigUpdated', () => emitAppConfigUpdated()],
+    ['updateTrayMenu', () => ipcMain.emit('updateTrayMenu')],
+    ['updateFloatingWindow', () => ipcMain.emit('updateFloatingWindow')]
+  ] as const) {
+    try {
+      emit()
+    } catch (error) {
+      appendAppLog(`[Sysproxy]: broadcast ${label} failed, ${error}\n`).catch(() => {})
+    }
+  }
+}
+
+function emitAppConfigUpdated(): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send('appConfigUpdated')
+  }
 }
 
 /**
