@@ -311,6 +311,10 @@ export async function forceRestoreNetwork(): Promise<ForceRestoreResult> {
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('forceRestoreNetwork'))
 }
 
+export async function detectSysProxyDrift(): Promise<SysProxyDrift> {
+  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('detectSysProxyDrift'))
+}
+
 export async function manualGrantCorePermition(
   cores?: ('mihomo' | 'mihomo-alpha')[]
 ): Promise<void> {

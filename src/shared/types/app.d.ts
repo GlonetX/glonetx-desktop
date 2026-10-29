@@ -13,6 +13,25 @@ interface ForceRestoreResult {
   errors: string[]
 }
 
+/** 单个网络服务上发现的代理状态问题 */
+interface SysProxyDriftIssue {
+  service: string
+  kind: 'stale' | 'missing' | 'mismatch'
+  detail: string
+}
+
+interface SysProxyDrift {
+  /** 检测是否真正执行成功（平台不支持时为 false） */
+  supported: boolean
+  /** 整体是否与配置一致 */
+  ok: boolean
+  /** 配置期望的代理地址；关闭时为 null */
+  expected: string | null
+  /** 实际开启代理的服务数 */
+  enabledCount: number
+  issues: SysProxyDriftIssue[]
+}
+
 type AppUpdateChannel = 'stable' | 'rolling'
 type AppNotificationMode = 'system' | 'toast'
 type AppNotificationVariant = 'default' | 'accent' | 'success' | 'warning' | 'danger'

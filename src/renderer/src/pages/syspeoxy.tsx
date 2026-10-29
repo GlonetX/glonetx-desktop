@@ -6,6 +6,7 @@ import SettingItem from '@renderer/components/base/base-setting-item'
 import EditableList from '@renderer/components/base/base-list-editor'
 import PacEditorModal from '@renderer/components/sysproxy/pac-editor-modal'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
+import { useSysProxyDrift } from '@renderer/hooks/use-sysproxy-drift'
 import { platform } from '@renderer/utils/init'
 import {
   forceRestoreNetwork,
@@ -17,6 +18,7 @@ import {
 import React, { Key, useEffect, useState } from 'react'
 import ByPassEditorModal from '@renderer/components/sysproxy/bypass-editor-modal'
 import { IoIosHelpCircle } from 'react-icons/io'
+import { LuTriangleAlert, LuCircleCheck } from 'react-icons/lu'
 import { notify } from '@renderer/utils/notification'
 import ConfirmModal from '@renderer/components/base/base-confirm'
 
@@ -107,6 +109,7 @@ const Sysproxy: React.FC = () => {
   const [openPacEditor, setOpenPacEditor] = useState(false)
   const [openRestoreConfirm, setOpenRestoreConfirm] = useState(false)
   const [restoring, setRestoring] = useState(false)
+  const { drift, refresh: refreshDrift } = useSysProxyDrift()
 
   const setValues = (v: typeof values): void => {
     originSetValues(v)
@@ -157,6 +160,7 @@ const Sysproxy: React.FC = () => {
     try {
       const result = await forceRestoreNetwork()
       mutateAppConfig()
+      await refreshDrift()
 
       if (result.errors.length > 0) {
         notify(`部分项目未能恢复：${result.errors.join('；')}`, {
@@ -507,8 +511,37 @@ const Sysproxy: React.FC = () => {
           </Button>
         </SettingItem>
         <SettingItem compatKey="legacy" title="当前状态">
-          <div className="text-sm text-muted">
-            {sysProxy.enable ? '系统代理已开启' : '系统代理已关闭'}
+          <div className="text-sm">
+            {!drift ? (
+              <span className="text-muted">检测中…</span>
+            ) : !drift.supported ? (
+              <span className="text-muted">
+                {sysProxy.enable ? '系统代理已开启' : '系统代理已关闭'}
+                <span className="ml-1 text-xs">（当前平台不支持自动检测）</span>
+              </span>
+            ) : drift.ok ? (
+              <span className="flex items-center gap-1 text-success">
+                <LuCircleCheck className="text-[14px]" />
+                {sysProxy.enable ? '系统代理已开启，与配置一致' : '系统代理已关闭，无残留'}
+              </span>
+            ) : (
+              <div className="space-y-1">
+                {drift.issues.map((issue, index) => (
+                  <div
+                    key={`${issue.service}-${issue.kind}-${index}`}
+                    className={`flex items-start gap-1 ${
+                      issue.kind === 'stale' ? 'text-danger' : 'text-warning'
+                    }`}
+                  >
+                    <LuTriangleAlert className="mt-0.5 shrink-0 text-[14px]" />
+                    <span>
+                      {issue.detail}
+                      {issue.kind === 'stale' && '（可能导致无法上网）'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </SettingItem>
       </SettingCard>

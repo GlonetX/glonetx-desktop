@@ -4,8 +4,10 @@ import BorderSwitch from '@renderer/components/base/border-swtich'
 import { useLocation } from 'react-router-dom'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
-import { triggerSysProxy } from '@renderer/utils/ipc'
+import { useSysProxyDrift } from '@renderer/hooks/use-sysproxy-drift'
+import { forceRestoreNetwork, triggerSysProxy } from '@renderer/utils/ipc'
 import { AiOutlineGlobal } from 'react-icons/ai'
+import { LuTriangleAlert } from 'react-icons/lu'
 import React from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -47,6 +49,33 @@ const SysproxySwitcher: React.FC<Props> = (props) => {
   const [pendingEnable, setPendingEnable] = React.useState<boolean | null>(null)
   const pending = pendingEnable !== null
   const displayEnable = pendingEnable ?? enable
+  const { drift, refresh: refreshDrift } = useSysProxyDrift()
+
+  // 「配置说关着，系统上却还留着」会直接断网，是必须让用户看见的那种问题；
+  // 其余漂移（未生效、地址被改）只提示，不升级成危险色。
+  const stale = !!drift?.issues.some((issue) => issue.kind === 'stale')
+  const drifted = !!drift?.supported && !drift.ok
+  const driftSummary = drifted ? drift.issues.map((issue) => issue.detail).join('\n') : ''
+
+  const onForceRestore = async (): Promise<void> => {
+    try {
+      const result = await forceRestoreNetwork()
+      await refreshDrift()
+      window.electron.ipcRenderer.send('updateFloatingWindow')
+      window.electron.ipcRenderer.send('updateTrayMenu')
+      notify(
+        result.errors.length > 0
+          ? `已恢复，但有 ${result.errors.length} 项失败：${result.errors.join('；')}`
+          : result.dnsRestored
+            ? '已清除系统代理并还原 DNS'
+            : '已清除系统代理设置',
+        { variant: result.errors.length > 0 ? 'warning' : 'success', timeout: 8000 }
+      )
+    } catch (e) {
+      notify(e, { variant: 'danger' })
+    }
+  }
+
   const onChange = async (enable: boolean): Promise<void> => {
     if (pending) return
     if (mode == 'manual' && disabled) return
@@ -61,6 +90,7 @@ const SysproxySwitcher: React.FC<Props> = (props) => {
       notify(e, { variant: 'danger' })
     } finally {
       setPendingEnable(null)
+      await refreshDrift()
     }
   }
 
@@ -68,9 +98,20 @@ const SysproxySwitcher: React.FC<Props> = (props) => {
     return (
       <SiderItem
         className={sysproxyCardStatus}
-        title="系统代理"
+        title={drifted ? `系统代理 · ${stale ? '代理残留' : '状态异常'}` : '系统代理'}
         route="/sysproxy"
-        icon={<AiOutlineGlobal className="text-[20px]" />}
+        icon={
+          <div className="relative">
+            <AiOutlineGlobal className="text-[20px]" />
+            {drifted && (
+              <span
+                className={`absolute -right-1 -top-1 h-2 w-2 rounded-full ${
+                  stale ? 'bg-danger' : 'bg-warning'
+                }`}
+              />
+            )}
+          </div>
+        }
         expanded={expanded}
       >
         <BorderSwitch
@@ -131,6 +172,27 @@ const SysproxySwitcher: React.FC<Props> = (props) => {
             系统代理
           </h3>
         </Card.Footer>
+        {drifted && (
+          <Card.Footer className="pt-0">
+            <button
+              type="button"
+              // 卡片整体在拖拽监听里，这里要拦住事件，否则点提示会变成拖动
+              onClick={(event) => {
+                event.stopPropagation()
+                event.preventDefault()
+                onForceRestore()
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              title={driftSummary}
+              className={`app-nodrag flex w-full items-start gap-1 text-left text-xs ${
+                stale ? 'text-danger' : 'text-warning'
+              }`}
+            >
+              <LuTriangleAlert className="mt-0.5 shrink-0 text-[12px]" />
+              <span className="leading-tight">{stale ? '代理残留，点此恢复' : '代理状态异常'}</span>
+            </button>
+          </Card.Footer>
+        )}
       </Card>
     </div>
   )

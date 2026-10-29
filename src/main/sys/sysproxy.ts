@@ -291,6 +291,193 @@ export interface ForceRestoreResult {
   errors: string[]
 }
 
+/** 单个网络服务上发现的代理状态问题 */
+export interface SysProxyDriftIssue {
+  /** 网络服务名（Windows / Linux 上为空或占位） */
+  service: string
+  /**
+   * - `stale`：配置说代理已关闭，但系统上还留着 —— 会断网
+   * - `missing`：配置说代理已开启，但系统上没有 —— 未生效
+   * - `mismatch`：系统代理指向的地址与配置不符 —— 被别的程序改了
+   */
+  kind: 'stale' | 'missing' | 'mismatch'
+  /** 给人看的说明 */
+  detail: string
+}
+
+export interface SysProxyDrift {
+  /** 检测是否真正执行成功（平台不支持时为 false） */
+  supported: boolean
+  /** 整体是否与配置一致 */
+  ok: boolean
+  /** 配置期望的代理地址，如 `127.0.0.1:7890`；关闭时为 null */
+  expected: string | null
+  /** 实际开启代理的服务数 */
+  enabledCount: number
+  issues: SysProxyDriftIssue[]
+}
+
+/**
+ * 检查「配置里的期望状态」与「系统真实状态」是否一致。
+ *
+ * 这两者会漂移，最常见的是应用被强杀后系统代理残留：配置说已关闭，
+ * 系统却仍然指着 127.0.0.1:7890，于是整机断网但界面看起来一切正常。
+ * 这里只读取、不修改，供界面给出提示。
+ */
+export async function detectSysProxyDrift(): Promise<SysProxyDrift> {
+  const { sysProxy } = await getAppConfig()
+  const { mode = 'manual', host = '127.0.0.1' } = sysProxy
+  const expected = sysProxy.enable
+    ? mode === 'auto'
+      ? 'pac'
+      : `${host || '127.0.0.1'}:${(await getControledMihomoConfig())['mixed-port'] ?? 7890}`
+    : null
+
+  if (process.platform === 'darwin') {
+    return await detectDarwinDrift(expected, mode)
+  }
+  if (process.platform === 'win32') {
+    return await detectWindowsDrift(expected, mode)
+  }
+  // Linux 的代理设置分散在 gsettings / 环境变量里，各发行版差异太大，
+  // 不做猜测：明确返回不支持，界面据此不显示提示。
+  return { supported: false, ok: true, expected, enabledCount: 0, issues: [] }
+}
+
+async function detectDarwinDrift(expected: string | null, mode: string): Promise<SysProxyDrift> {
+  const execFilePromise = promisify(execFile)
+  const issues: SysProxyDriftIssue[] = []
+  let enabledCount = 0
+  let services: string[]
+
+  try {
+    const { stdout } = await execFilePromise('networksetup', ['-listallnetworkservices'])
+    services = stdout
+      .split('\n')
+      .slice(1)
+      .map((line) => line.replace(/^\*/, '').trim())
+      .filter((line) => line.length > 0)
+  } catch (error) {
+    await appendAppLog(`[Sysproxy]: drift detect failed to list services, ${error}\n`)
+    return { supported: false, ok: true, expected, enabledCount: 0, issues: [] }
+  }
+
+  for (const service of services) {
+    const active = await readDarwinServiceProxy(service, execFilePromise)
+    if (!active.enabled) continue
+
+    enabledCount++
+
+    if (!expected) {
+      // 期望关闭却仍然开着 —— 最危险的一种，会断网
+      issues.push({
+        service,
+        kind: 'stale',
+        detail: `${service} 仍指向 ${active.server}`
+      })
+      continue
+    }
+
+    if (mode === 'auto') {
+      // PAC 模式下只关心「有没有开」，具体 URL 由 pacPort 决定
+      continue
+    }
+
+    if (`${active.server}:${active.port}` !== expected) {
+      issues.push({
+        service,
+        kind: 'mismatch',
+        detail: `${service} 指向 ${active.server}:${active.port}，期望 ${expected}`
+      })
+    }
+  }
+
+  // 期望开启，但一个服务都没开
+  if (expected && mode === 'manual' && enabledCount === 0) {
+    issues.push({
+      service: '',
+      kind: 'missing',
+      detail: `系统代理未生效，期望 ${expected}`
+    })
+  }
+
+  return {
+    supported: true,
+    ok: issues.length === 0,
+    expected,
+    enabledCount,
+    issues
+  }
+}
+
+async function readDarwinServiceProxy(
+  service: string,
+  execFilePromise: (file: string, args: string[]) => Promise<{ stdout: string }>
+): Promise<{ enabled: boolean; server: string; port: string }> {
+  try {
+    const { stdout } = await execFilePromise('networksetup', ['-getwebproxy', service])
+    const enabled = /Enabled:\s*Yes/i.test(stdout)
+    const server = stdout.match(/Server:\s*(\S+)/)?.[1] ?? ''
+    const port = stdout.match(/Port:\s*(\d+)/)?.[1] ?? ''
+    return { enabled, server, port }
+  } catch {
+    return { enabled: false, server: '', port: '' }
+  }
+}
+
+async function detectWindowsDrift(expected: string | null, mode: string): Promise<SysProxyDrift> {
+  // Windows 的系统代理是 HKCU 下的一组值，不区分网络服务
+  const execFilePromise = promisify(execFile)
+  try {
+    const { stdout } = await execFilePromise('reg', [
+      'query',
+      'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings',
+      '/v',
+      'ProxyEnable'
+    ])
+    const enabled = /ProxyEnable\s+REG_DWORD\s+0x1/i.test(stdout)
+    const issues: SysProxyDriftIssue[] = []
+    let server = ''
+
+    if (enabled) {
+      const { stdout: serverOut } = await execFilePromise('reg', [
+        'query',
+        'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings',
+        '/v',
+        'ProxyServer'
+      ])
+      server = serverOut.match(/ProxyServer\s+REG_SZ\s+(\S+)/)?.[1] ?? ''
+    }
+
+    if (enabled && !expected) {
+      issues.push({ service: 'Windows', kind: 'stale', detail: `系统代理仍指向 ${server}` })
+    } else if (!enabled && expected && mode === 'manual') {
+      issues.push({
+        service: 'Windows',
+        kind: 'missing',
+        detail: `系统代理未生效，期望 ${expected}`
+      })
+    } else if (enabled && expected && mode === 'manual' && server !== expected) {
+      issues.push({
+        service: 'Windows',
+        kind: 'mismatch',
+        detail: `系统代理指向 ${server}，期望 ${expected}`
+      })
+    }
+
+    return {
+      supported: true,
+      ok: issues.length === 0,
+      expected,
+      enabledCount: enabled ? 1 : 0,
+      issues
+    }
+  } catch (error) {
+    await appendAppLog(`[Sysproxy]: drift detect failed on windows, ${error}\n`)
+    return { supported: false, ok: true, expected, enabledCount: 0, issues: [] }
+  }
+}
+
 /**
  * 强制把本机网络配置恢复到未被本应用改动的状态。
  *

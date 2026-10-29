@@ -68,7 +68,7 @@ import {
   manualGrantCorePermition,
   revokeCorePermission
 } from '../core/permission'
-import { forceRestoreNetwork, triggerSysProxy } from '../sys/sysproxy'
+import { detectSysProxyDrift, forceRestoreNetwork, triggerSysProxy } from '../sys/sysproxy'
 import { checkUpdate, downloadAndInstallUpdate, cancelUpdate } from '../resolve/autoUpdater'
 import {
   checkElevateTask,
@@ -343,6 +343,7 @@ export function registerIpcMainHandlers(): void {
     ipcErrorWrapper(triggerSysProxy)(enable, onlyActiveDevice, useRegistry)
   )
   handle('forceRestoreNetwork', () => ipcErrorWrapper(forceRestoreNetwork)())
+  handle('detectSysProxyDrift', () => ipcErrorWrapper(detectSysProxyDrift)())
   if (!systemCoreOnlyBuild) {
     handle('manualGrantCorePermition', (_e, cores?: ('mihomo' | 'mihomo-alpha')[]) =>
       ipcErrorWrapper(manualGrantCorePermition)(cores)
